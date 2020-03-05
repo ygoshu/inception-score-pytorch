@@ -1,8 +1,12 @@
+import argparse
 import torch
+import os
 from torch import nn
 from torch.autograd import Variable
 from torch.nn import functional as F
 import torch.utils.data
+
+
 
 from torchvision.models.inception import inception_v3
 
@@ -47,10 +51,10 @@ def inception_score(imgs, cuda=True, batch_size=32, resize=False, splits=1):
     preds = np.zeros((N, 1000))
 
     for i, batch in enumerate(dataloader, 0):
+        #batch = torch.from_numpy(np.stack(batch))
         batch = batch.type(dtype)
         batchv = Variable(batch)
         batch_size_i = batch.size()[0]
-
         preds[i*batch_size:i*batch_size + batch_size_i] = get_pred(batchv)
 
     # Now compute the mean kl-div
@@ -77,19 +81,39 @@ if __name__ == '__main__':
 
         def __len__(self):
             return len(self.orig)
-
     import torchvision.datasets as dset
     import torchvision.transforms as transforms
+  
+    from PIL import Image
+    
 
-    cifar = dset.CIFAR10(root='data/', download=True,
-                             transform=transforms.Compose([
-                                 transforms.Scale(32),
-                                 transforms.ToTensor(),
-                                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-                             ])
-    )
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--fst_dset", type=str, help="first directory in shared dir")
+    parser.add_argument("--snd_dset", type=str, help="second directory in shared dir")
+    opt = parser.parse_args()
+    print(opt)
 
-    IgnoreLabelDataset(cifar)
 
+
+
+    def load_image( infilename ) :
+        img = Image.open( infilename )
+        img.load()
+        data = np.asarray( img, dtype="float64" )
+        return data
+    path = '/share/se3/export/data/'+opt.fst_dset+'/'+opt.snd_dset+'/'
+    data = []
+    counter = 0
+    for filename in os.listdir(path):
+        if counter > 15000:
+            break
+        if counter % 1000 == 0: 
+            print('files read', counter)
+        img = load_image(path+filename) 
+        img *= 255.0/img.max()
+        data.append(np.transpose(img))
+        counter += 1
+    data = torch.from_numpy(np.stack(data)) 
+    torch.save(data, opt.fst_dset+'_'+opt.snd_dset+'.pt') 
     print ("Calculating Inception Score...")
-    print (inception_score(IgnoreLabelDataset(cifar), cuda=True, batch_size=32, resize=True, splits=10))
+    print (inception_score(data, cuda=False, batch_size=32, resize=True, splits=10))
